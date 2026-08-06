@@ -1,0 +1,66 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for common
+#
+# beamlinehost's own baseline — same tools, timezone, and time-sync approach
+# as the fleet's common role (lab-ansible/roles/common), since the same
+# justifications apply here: admin/debugging toolkit, and chrony/Etc/UTC
+# matter especially on this host, since every VM's own chrony ultimately
+# traces its time back to whatever this machine's clock actually is.
+#
+# ufw is installed but deliberately NOT enabled here — unlike the fleet's
+# common role, which enables default-deny immediately. This is a Desktop
+# machine in active daily use (GUI session, remote desktop access per
+# project notes); enabling default-deny blind risks locking out something
+# currently relied on. Revisit only after auditing what's actually in use
+# (`ss -tlnp`, active remote-desktop/VNC ports, etc.) and writing explicit
+# allow rules for what's genuinely needed — not before.
+
+- name: Set timezone to Etc/UTC
+  community.general.timezone:
+    name: Etc/UTC
+
+- name: Ensure baseline packages are installed
+  ansible.builtin.apt:
+    name:
+      # Time sync and firewall
+      - chrony
+      - ufw
+      # Needed to add external apt repos (e.g. HashiCorp's, for Terraform)
+      - curl
+      - gnupg2
+      - ca-certificates
+      # Remote access
+      - openssh-server
+      # Admin/debugging toolkit
+      - htop
+      - vim
+      - git
+      - tree
+      - wget
+      - dnsutils
+      - bash-completion
+      - jq
+    state: present
+    update_cache: true
+
+- name: Ensure chrony (NTP) is running and enabled
+  ansible.builtin.service:
+    name: chrony
+    state: started
+    enabled: true
+
+- name: Deploy /etc/hosts with the VM fleet roster
+  ansible.builtin.template:
+    src: hosts.j2
+    dest: /etc/hosts
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable color prompt in .bashrc
+  ansible.builtin.lineinfile:
+    path: "/home/{{ hypervisor_user }}/.bashrc"
+    regexp: '^#force_color_prompt=yes'
+    line: force_color_prompt=yes
+  become: false

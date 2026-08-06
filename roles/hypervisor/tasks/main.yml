@@ -1,0 +1,130 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for hypervisor
+#
+# What actually makes beamlinehost function as this fleet's hypervisor.
+# Idempotent and re-runnable via `ansible-playbook site.yml`. Terraform is
+# deliberately NOT here -- see roles/terraform: this role covers only what
+# makes the host capable of running VMs at all.
+#
+# Pool/network XML lives in templates/, not inline -- easier to read/diff.
+#
+# virt-host-validate: checks stdout AND stderr for a literal FAIL line,
+# not the exit code -- WARN-level checks also exit non-zero (see appendix).
+#
+# NOTE: qemu-system-x86 is correct; qemu-kvm does not exist on Ubuntu 24.04
+# (see Troubleshooting appendix). Do not "fix" this back to qemu-kvm.
+#
+# NOTE: libvirtd is Ubuntu 24.04's only option -- no virtqemud/virtnetworkd/
+# virtstoraged binaries, packages, or units exist on this release at all
+# (confirmed directly: which/dpkg -L/apt-cache search/systemctl list-unit-files
+# all empty). Its "changed" flapping under --check is expected: it runs with
+# --timeout 120 and genuinely exits when idle, respawned by its sockets on
+# demand (see Troubleshooting appendix). Not a fault, no fix needed.
+
+- name: Ensure KVM/libvirt packages are installed
+  ansible.builtin.apt:
+    name:
+      - qemu-system-x86
+      - qemu-utils
+      - libvirt-daemon-system
+      - libvirt-clients
+      - virtinst
+      - virt-manager
+      - libguestfs-tools
+      - genisoimage
+      - python3-libvirt
+      - python3-lxml
+      - ksmtuned
+    state: present
+    update_cache: true
+
+- name: Ensure the libvirtd service is running and enabled
+  ansible.builtin.systemd:
+    name: libvirtd
+    state: started
+    enabled: true
+
+- name: Ensure ksm.service is enabled (turns KSM on at boot; a one-shot unit, exits after running)
+  ansible.builtin.systemd:
+    name: ksm
+    state: started
+    enabled: true
+
+- name: Ensure ksmtuned is running and enabled
+  ansible.builtin.systemd:
+    name: ksmtuned
+    state: started
+    enabled: true
+
+- name: Validate host virtualization capability
+  ansible.builtin.command: virt-host-validate qemu
+  register: virt_host_validate_result
+  changed_when: false
+  check_mode: false
+  failed_when: >-
+    'FAIL' in virt_host_validate_result.stdout or
+    'FAIL' in virt_host_validate_result.stderr
+
+- name: "Ensure {{ hypervisor_user }} is in the libvirt and kvm groups"
+  ansible.builtin.user:
+    name: "{{ hypervisor_user }}"
+    groups: libvirt,kvm
+    append: true
+
+- name: Ensure the default libvirt storage pool is defined
+  community.libvirt.virt_pool:
+    name: default
+    state: present
+    xml: "{{ lookup('template', 'default-pool.xml.j2') }}"
+
+- name: Ensure the default storage pool is active and autostarts
+  community.libvirt.virt_pool:
+    name: default
+    state: active
+    autostart: true
+
+# Confirmed real bug in community.libvirt's virt_pool/virt_net "modify"
+# handling: setting state:active + autostart:true in one call is unreliable
+# specifically when transitioning a resource from inactive to active (see
+# the collection's own changelog: "virt_net - fix modify function which
+# was not idempotent, depending on whether the network was active").
+# Confirmed live on this exact build: the pre-existing 'default' network
+# (already active via Ubuntu's own packaging) got autostart correctly;
+# 'beamlinenet' and this pool (both freshly activated by the tasks above)
+# did not, despite Ansible reporting success. Direct virsh calls bypass
+# the buggy code path entirely -- idempotent by virtue of virsh's own
+# behavior (re-running on an already-autostarted resource is a no-op).
+- name: Ensure the default storage pool autostart is actually set (community.libvirt workaround)
+  ansible.builtin.command: virsh pool-autostart default
+  changed_when: false
+  check_mode: false
+
+- name: Ensure the default (NAT) libvirt network is defined
+  community.libvirt.virt_net:
+    name: default
+    state: present
+    xml: "{{ lookup('template', 'default-network.xml.j2') }}"
+
+- name: Ensure the default (NAT) libvirt network is active and autostarts
+  community.libvirt.virt_net:
+    name: default
+    state: active
+    autostart: true
+
+- name: Ensure the isolated beamlinenet network is defined
+  community.libvirt.virt_net:
+    name: beamlinenet
+    state: present
+    xml: "{{ lookup('template', 'beamlinenet.xml.j2') }}"
+
+- name: Ensure beamlinenet is active and autostarts
+  community.libvirt.virt_net:
+    name: beamlinenet
+    state: active
+    autostart: true
+
+- name: Ensure beamlinenet autostart is actually set (community.libvirt workaround)
+  ansible.builtin.command: virsh net-autostart beamlinenet
+  changed_when: false
+  check_mode: false

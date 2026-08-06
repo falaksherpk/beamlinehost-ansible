@@ -1,0 +1,7 @@
+---
+- name: Apply baseline configuration to beamlinehost
+  hosts: hypervisor
+  roles:
+    - common
+    - hypervisor
+    - terraform
