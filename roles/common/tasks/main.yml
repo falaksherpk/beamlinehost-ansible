@@ -41,6 +41,7 @@
       - dnsutils
       - bash-completion
       - jq
+      - shellcheck
     state: present
     update_cache: true
 
