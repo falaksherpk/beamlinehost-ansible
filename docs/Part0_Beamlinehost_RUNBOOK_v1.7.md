@@ -12,8 +12,8 @@ Everything in this document runs **on `beamlinehost` itself**, except the final 
 
 | | |
 |---|---|
-| Last validated | 2026-08-05, live end-to-end disaster-recovery test: genuine bare-metal Ubuntu install through the fleet, not just a running system checked after the fact 2026-10-04, live rebuild: all five Section 1 checkpoint items passed (including the v1.2 color-prompt line and `ansible hypervisor -m ping`), the versions table below was re-checked against the installed packages, and Section 3 completed end to end with every checkpoint item passing, including the v1.1 control-node step (12/12 passwordless SSH by IP from `admin.beamline`), the by-name fleet check (13/13), `./tf.sh plan` reporting `No changes`, and `ansible-playbook site.yml --check --diff` reporting `changed=0`; all 20 files embedded in Sections 1-3 were confirmed byte-identical to the live ones, and Section 4's checkpoint passed: both projects show a clean `git status` against `main` on GitHub (`beamlinehost-ansible` at `b613cbc`, `beamline-terraform` at `0df1cf8`). The v1.5 `tf.sh`/`TMPDIR` change also passed a host-reboot test the same day (see the Troubleshooting entry on reboot drift) |
-| Revision history | v1.5 — Section 3's reboot-drift fix changed. The `staging_directory` attribute and `cloudinit_staging_dir` variable are removed: the attribute is not in the released provider (v0.9.9; proposed upstream as issue #1368 / PR #1369) and `terraform validate` rejects it with `Unsupported argument`. Replaced by a project-local `tf.sh` wrapper that exports `TMPDIR` to a gitignored `.tmp/`; every Terraform command in Section 3 now runs through `./tf.sh`. Also corrected the `/tmp` description: it is emptied at boot (by systemd-tmpfiles on this host, where `/tmp` is ext4, not tmpfs). Also brought two stale 10-VM references in the Troubleshooting appendix up to the current 13-VM fleet and annotated the drift counts there with how they scale. Added the three HPC nodes (`hpc-ctl`, `hpc-c1`, `hpc-gpu`) to the embedded `hosts.j2`, which had only the original 10 VMs: Section 3's by-name SSH check includes the HPC names, so on a rebuild from this runbook alone those three checks would have failed with a name-resolution error. Confirmed and fixed live on 2026-10-04 (13 entries in `/etc/hosts` after `ansible-playbook site.yml`, all three names resolving), and the Section 2 `getent` check now includes `hpc-gpu.beamline`. Replaced the embedded `providers.tf` and `variables.tf` with the live files' `terraform fmt`-canonical text (the old blocks were hand-aligned and differed from the live files in whitespace only, confirmed with `diff -w`), so all 19 embedded files in Sections 1-3 are now byte-identical to the live ones on beamlinehost. Section 4 rewritten for GitHub (`github.com/falaksherpk`) instead of `gitlab.beamline`: a dedicated key, `~/.ssh/config`, host-key verification, git identity, and attaching both projects to their history with a plain `git reset`, all done live on 2026-10-04. Section 2 now embeds the GitHub versions of `ansible.cfg` (SSH multiplexing and keepalive), the `common` tasks (`shellcheck`) and the `hypervisor` tasks (`check_mode: false` on the three `command` tasks, so `--check` runs them too), plus the project's `.gitignore`, moved here from Section 4. Section 3's `variables.tf` description no longer claims a GPU hostdev in `main.tf`, since neither copy had one. The intro's self-containment rationale and the dependency diagram (now including the three HPC nodes) were updated to match. The "10 domains" timing in the Estimated timings section is deliberately unchanged: it is a measurement from the 2026-08-05 test, which ran against the 10-VM fleet. v1.3 — renamed this runbook's own four divisions from "Part" to "Section" throughout (headings, checkpoints, and all internal cross-references), removed all outward references to other documents so this runbook stands entirely on its own, and moved the version designation into the filename. No procedural content changed. v1.2 — added a `sed`-based color-prompt enable to Section 1, right after the hostname is set and before `exec bash` (which now also picks up the `.bashrc` change), matching what `beamlinehost-ansible`'s own `common` role applies declaratively in Section 2. v1.1 — added "Establish the control node (`admin.beamline`)" to Section 3: copies the fleet private key to `admin.beamline` as `~/.ssh/id_ed25519` and verifies passwordless SSH from `admin.beamline` to the other nine VMs by IP. Without it, a rebuild driven solely by this runbook leaves `admin.beamline` unable to act as the fleet's Ansible control node, and the first fleet-wide `ansible all -m ping` run from it would fail at the very first connection attempt. v1.0 — initial disaster-recovery runbook, written after bringing `beamlinehost` under real configuration management for the first time (until then, everything here had only ever been a hand-run set of commands, never idempotent or re-runnable) |
+| Last validated | 2026-08-05, live end-to-end disaster-recovery test: genuine bare-metal Ubuntu install through the fleet, not just a running system checked after the fact 2026-10-04, live rebuild: all five Section 1 checkpoint items passed (including the v1.2 color-prompt line and `ansible hypervisor -m ping`), the versions table below was re-checked against the installed packages, and Section 3 completed end to end with every checkpoint item passing, including the v1.1 control-node step (12/12 passwordless SSH by IP from `admin.beamline`), the by-name fleet check (13/13), `./tf.sh plan` reporting `No changes`, and `ansible-playbook site.yml --check --diff` reporting `changed=0`; all 20 files embedded in Sections 1-3 were confirmed byte-identical to the live ones, and Section 4's checkpoint passed: both projects show a clean `git status` against `main` on GitHub (`beamlinehost-ansible` at `b613cbc`, `beamline-terraform` at `0df1cf8`). The v1.5 `tf.sh`/`TMPDIR` change also passed a host-reboot test the same day (see the Troubleshooting entry on reboot drift). 2026-10-05: Section 2's lab-CA trust (v1.7) applied live on `beamlinehost` (first run `changed=2`, trust confirmed with `openssl verify`, second run `changed=0`), and Section 3's CA-restore step tested by restoring into a temporary directory on `admin.beamline` |
+| Revision history | v1.7 — `beamlinehost` now trusts the lab CA through Ansible instead of by hand: Section 2 embeds the CA certificate (`roles/common/files/beamline-ca.crt`, the new `Beamline Lab Root CA 2026-10` created in Part 2 Chapter 9 after the previous CA's key was lost with the old `admin.beamline`), the `Update CA certificates` handler, and the CA-trust task in `common` (tagged `ca_trust`, mirroring `beamline-ansible`); Section 2's verification and checkpoint add an `openssl verify` check. Section 3 gains a tested step restoring the CA key onto `admin.beamline` from backup. Replaces the manual trust step of Part 2 Ch10 LAB 10.3.3. Embedded files: 20 → 22. v1.6 — Prose only; no procedure and no embedded file changed. GitLab re-added to the two lists of software that runs inside the VMs (the scope line under the dependency diagram, and "Where this runbook ends"), following the decision to reinstall self-hosted GitLab on `gitlab.beamline` for Part 2 while the host-recovery repos stay on GitHub. v1.5 — Section 3's reboot-drift fix changed. The `staging_directory` attribute and `cloudinit_staging_dir` variable are removed: the attribute is not in the released provider (v0.9.9; proposed upstream as issue #1368 / PR #1369) and `terraform validate` rejects it with `Unsupported argument`. Replaced by a project-local `tf.sh` wrapper that exports `TMPDIR` to a gitignored `.tmp/`; every Terraform command in Section 3 now runs through `./tf.sh`. Also corrected the `/tmp` description: it is emptied at boot (by systemd-tmpfiles on this host, where `/tmp` is ext4, not tmpfs). Also brought two stale 10-VM references in the Troubleshooting appendix up to the current 13-VM fleet and annotated the drift counts there with how they scale. Added the three HPC nodes (`hpc-ctl`, `hpc-c1`, `hpc-gpu`) to the embedded `hosts.j2`, which had only the original 10 VMs: Section 3's by-name SSH check includes the HPC names, so on a rebuild from this runbook alone those three checks would have failed with a name-resolution error. Confirmed and fixed live on 2026-10-04 (13 entries in `/etc/hosts` after `ansible-playbook site.yml`, all three names resolving), and the Section 2 `getent` check now includes `hpc-gpu.beamline`. Replaced the embedded `providers.tf` and `variables.tf` with the live files' `terraform fmt`-canonical text (the old blocks were hand-aligned and differed from the live files in whitespace only, confirmed with `diff -w`), so all 19 embedded files in Sections 1-3 are now byte-identical to the live ones on beamlinehost. Section 4 rewritten for GitHub (`github.com/falaksherpk`) instead of `gitlab.beamline`: a dedicated key, `~/.ssh/config`, host-key verification, git identity, and attaching both projects to their history with a plain `git reset`, all done live on 2026-10-04. Section 2 now embeds the GitHub versions of `ansible.cfg` (SSH multiplexing and keepalive), the `common` tasks (`shellcheck`) and the `hypervisor` tasks (`check_mode: false` on the three `command` tasks, so `--check` runs them too), plus the project's `.gitignore`, moved here from Section 4. Section 3's `variables.tf` description no longer claims a GPU hostdev in `main.tf`, since neither copy had one. The intro's self-containment rationale and the dependency diagram (now including the three HPC nodes) were updated to match. The "10 domains" timing in the Estimated timings section is deliberately unchanged: it is a measurement from the 2026-08-05 test, which ran against the 10-VM fleet. v1.3 — renamed this runbook's own four divisions from "Part" to "Section" throughout (headings, checkpoints, and all internal cross-references), removed all outward references to other documents so this runbook stands entirely on its own, and moved the version designation into the filename. No procedural content changed. v1.2 — added a `sed`-based color-prompt enable to Section 1, right after the hostname is set and before `exec bash` (which now also picks up the `.bashrc` change), matching what `beamlinehost-ansible`'s own `common` role applies declaratively in Section 2. v1.1 — added "Establish the control node (`admin.beamline`)" to Section 3: copies the fleet private key to `admin.beamline` as `~/.ssh/id_ed25519` and verifies passwordless SSH from `admin.beamline` to the other nine VMs by IP. Without it, a rebuild driven solely by this runbook leaves `admin.beamline` unable to act as the fleet's Ansible control node, and the first fleet-wide `ansible all -m ping` run from it would fail at the very first connection attempt. v1.0 — initial disaster-recovery runbook, written after bringing `beamlinehost` under real configuration management for the first time (until then, everything here had only ever been a hand-run set of commands, never idempotent or re-runnable) |
 
 ### Validated against these versions
 
@@ -93,7 +93,7 @@ flowchart LR
     T --> V7[obs.beamline]
     T --> V8[hpc-ctl / hpc-c1 / hpc-gpu]
 ```
-Recovery order follows this chain left to right — nothing on the right can come up until everything to its left is working. This runbook covers everything through `beamlinenet` and the 13 VMs existing and reachable; configuring what runs *inside* each VM (Kubernetes, Tango, SLURM) is out of scope here (Section 4).
+Recovery order follows this chain left to right — nothing on the right can come up until everything to its left is working. This runbook covers everything through `beamlinenet` and the 13 VMs existing and reachable; configuring what runs *inside* each VM (GitLab, Kubernetes, Tango, SLURM) is out of scope here (Section 4).
 
 ---
 
@@ -307,6 +307,14 @@ cat > roles/common/tasks/main.yml << 'EOF'
     regexp: '^#force_color_prompt=yes'
     line: force_color_prompt=yes
   become: false
+
+- name: Install the lab's self-signed CA certificate into the system trust store
+  ansible.builtin.copy:
+    src: beamline-ca.crt
+    dest: /usr/local/share/ca-certificates/beamline-ca.crt
+    mode: '0644'
+  notify: Update CA certificates
+  tags: [ca_trust]
 EOF
 ```
 
@@ -331,6 +339,59 @@ cat > roles/common/templates/hosts.j2 << 'EOF'
 10.10.10.51     hpc-ctl.beamline
 10.10.10.52     hpc-c1.beamline
 10.10.10.53     hpc-gpu.beamline
+EOF
+```
+
+### `roles/common/handlers/main.yml`
+
+```bash
+cat > roles/common/handlers/main.yml << 'EOF'
+---
+# handlers file for roles/common
+
+- name: Update CA certificates
+  ansible.builtin.command: update-ca-certificates
+EOF
+```
+
+### `roles/common/files/beamline-ca.crt`
+
+The lab's root CA certificate (`CN=Beamline Lab Root CA 2026-10`, SHA-256 fingerprint `01:6D:EC:B8:AA:60:21:98:F2:88:FC:08:28:C4:BC:77:C4:0E:FA:81:79:88:70:F3:D1:BA:58:88:27:6B:4E:DE`), so `beamlinehost` trusts the same CA as every VM in the fleet from its first `site.yml` run. This is the public certificate only, safe to embed and to commit; the CA's private key lives on `admin.beamline` in `~/lab-ca`, with backups in `~/ca-backups/lab-ca-2026-10` on `beamlinehost` and on USB (restoring it is a Section 3 step). If the CA is ever replaced, update this file here, in `beamlinehost-ansible`, and in `beamline-ansible`'s `common` role together.
+
+```bash
+cat > roles/common/files/beamline-ca.crt << 'EOF'
+-----BEGIN CERTIFICATE-----
+MIIFbTCCA1WgAwIBAgIUee7fFaczLzn9YjJzPllE6oiTrZ0wDQYJKoZIhvcNAQEL
+BQAwPjEVMBMGA1UECgwMQmVhbWxpbmUgTGFiMSUwIwYDVQQDDBxCZWFtbGluZSBM
+YWIgUm9vdCBDQSAyMDI2LTEwMB4XDTI2MTAwNTExMTQzMFoXDTM2MTAwMjExMTQz
+MFowPjEVMBMGA1UECgwMQmVhbWxpbmUgTGFiMSUwIwYDVQQDDBxCZWFtbGluZSBM
+YWIgUm9vdCBDQSAyMDI2LTEwMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKC
+AgEA8XDPL/zSHvr+w2DMfSgb/6BKfOWA7Rl1p8KKdSV2WITpyw08SyOZiPf4Hur/
+PYVhtP/QRNlojpTqmq1VDR49oUMAvidzFmSMFsPjNq1h5XUOZfKvHRBS6yHuLOCG
+vXniR8JhmtSmeyIRT5XVO3p+TAkqRTnzpZcpH2rJkgmTECXLQuow2/Dp/61/Wks3
+51VYVjDHLwscv8FPyKb7Ry1fGc+5NIslcKqWFrZ76YiT2L8YnmBhTn5R+FvDnR1s
+2jIoaypLqPGamPvLJhnxwyuoFzIGKvdv6kTXZGk3SeqQYjn5xLZr+5r8L1uWo0yT
+1NpPlrZRtZ8j63U5CnR2HYFFTiZBaxkSTEZx36OQ++msTlUREejoafaS5akRp5m8
+TmnCbqg/KxMFlZPfAthUfWEGNwNnEoCTrNcBQi0YIKFRV0z++FZunuz8Ww5ZC8U/
++VeJ66MWH7o2R14E5vVABQNf72e6ZVtQ5pTg3y+c1frID6Uh6YQcRAsbKK9efeMC
+KqMDur/v6Dxf7vTdKzFSAsiWHLKtTDFmQr9EfRsE99sHEM0qqyGwecBu9pksOhQM
+lqsyWjVmshpcq42mapUg9vZo7SfQBrsbehn8kIasn16updxb7+Nf7TMkg1p900ty
+AWn+Nam6mfJa4R+jOitqW60D7j1PXt7pwArCuc3O2H6OP80CAwEAAaNjMGEwHQYD
+VR0OBBYEFFj1ZrM6HeOBz8CCSvzexYASvGoqMB8GA1UdIwQYMBaAFFj1ZrM6HeOB
+z8CCSvzexYASvGoqMA8GA1UdEwEB/wQFMAMBAf8wDgYDVR0PAQH/BAQDAgEGMA0G
+CSqGSIb3DQEBCwUAA4ICAQB+TXM255h0Uo/CQ8Ak2OHqoyNAJDvTgi/zr1aVu9d2
+kPdzYYNxithbhJ5cyw4sTmAPUwgiJmHj3x/0uYofWVMhXEMuGk4jC8vviMOBW5Sh
+7Cp0irjDUDekEb4VceUXsB8HztFv/ZDGYW3updvFsEd7tsPHI+Y0axDqXXditsYX
+Sh2eDvvhyRugjCwxVwro3urZJjgM9bdmeQpLSpmXmO03uozoG9QrKqFhHFKbcQc2
+DJl56y6w42cbGgmchjJBEQ+r5hCES9a3uZ3SyW6ypAW+VhLsEGh0vd2ygz+H7SPY
+7K+CpCaf2028bayS0yHvMFyQ8DFb371QxKY0dFStNDZ5KsEgamgUTU2xOJZgmPv/
+y+6V9xvHmqHEq6KRUiyT5Z1zQQBJHpv8xHPV13QriI4gwjeayH4n+/Hi9h0SZd89
+BGT5avHqG6chdw9J7qAo3hUf/Bpbf+83NVSZOo+drVm3e+7pn0Y7h4VWUMIiS6vv
+D4GPr2gQ10WSv2BklyjcKWkNhVh9mFDO7B1ObPU9X3Xn6Ca7XkptqS2FnJzo60ku
+m9P5gMHhRv37qXoP+dJcxu0B/R+7F0tzsF7MtJ2MVDpfvsEV5tSAjEJOQ5iDV4kM
+5CnGhRiUz+5sdHlCLPGrohPrqM6qQ1I99oBdPsltnlCcXmfbdYGA41/MVG4IA3jA
+Yg==
+-----END CERTIFICATE-----
 EOF
 ```
 
@@ -589,7 +650,7 @@ Review the diff. On a genuinely fresh install, expect nearly everything to show 
 ```bash
 ansible-playbook site.yml --diff
 ```
-This installs and configures everything: baseline tools, `Etc/UTC`, `chrony`, KVM/libvirt, group membership, the `default` storage pool, both libvirt networks (`default` and `beamlinenet`), `ksmtuned`, and Terraform.
+This installs and configures everything: baseline tools, `Etc/UTC`, `chrony`, KVM/libvirt, group membership, the `default` storage pool, both libvirt networks (`default` and `beamlinenet`), `ksmtuned`, Terraform, and trust in the lab CA (the certificate goes into `/usr/local/share/ca-certificates/`, and the `Update CA certificates` handler rebuilds the system bundle).
 
 **Log out and back in** (or reboot) — the `libvirt`/`kvm` group membership only takes effect on next login.
 
@@ -609,8 +670,9 @@ virsh pool-list --all
 terraform -version
 systemctl is-active ksmtuned
 getent hosts gitlab.beamline hpc-gpu.beamline
+openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt /usr/local/share/ca-certificates/beamline-ca.crt
 ```
-Expect: no VMs yet (empty list, that's correct), both `default` and `beamlinenet` networks `active`, `default` pool `active`, Terraform reports a version, `ksmtuned` active, and `getent hosts gitlab.beamline hpc-gpu.beamline` resolves to `10.10.10.12` and `10.10.10.53` — proof `/etc/hosts` is deployed correctly, including the last entry of the 13-VM roster, even though the actual VMs don't exist until Section 3.
+Expect: no VMs yet (empty list, that's correct), both `default` and `beamlinenet` networks `active`, `default` pool `active`, Terraform reports a version, `ksmtuned` active, and `getent hosts gitlab.beamline hpc-gpu.beamline` resolves to `10.10.10.12` and `10.10.10.53` — proof `/etc/hosts` is deployed correctly, including the last entry of the 13-VM roster, even though the actual VMs don't exist until Section 3. `openssl verify` prints `/usr/local/share/ca-certificates/beamline-ca.crt: OK`.
 
 ### Checkpoint — end of Section 2
 
@@ -620,6 +682,7 @@ Expect: no VMs yet (empty list, that's correct), both `default` and `beamlinenet
 - [ ] `terraform -version` prints a version
 - [ ] `systemctl is-active ksmtuned` prints `active`
 - [ ] `getent hosts gitlab.beamline hpc-gpu.beamline` resolves to `10.10.10.12` and `10.10.10.53`, and `grep -c '\.beamline' /etc/hosts` prints `13`
+- [ ] `openssl verify -CAfile /etc/ssl/certs/ca-certificates.crt /usr/local/share/ca-certificates/beamline-ca.crt` prints `…/beamline-ca.crt: OK` — the lab CA is in the system trust bundle, not just copied
 - [ ] `ansible-playbook site.yml --check --diff` (run once more) shows `changed=0` — genuine idempotency, not just a completed run
 
 If the last check still shows `changed`, something in the role doesn't match reality yet — don't proceed to Section 3 until it's clean.
@@ -1041,6 +1104,23 @@ done
 
 Expect each of the twelve calls to return the correct remote hostname, with no password prompt. This is a deliberately-manual step — the key is never baked into cloud-init — so it must be redone on every `admin.beamline` rebuild, including this one.
 
+### Restore the lab CA onto `admin.beamline`
+
+The lab's certificate authority (created in Part 2, Chapter 9) keeps its private key on `admin.beamline` in `~/lab-ca` — which this rebuild has just recreated empty. Its certificate is already trusted on `beamlinehost` (Section 2) and is redeployed to every VM by the fleet's own `common` role, so restore the **key** from backup now: the same CA then keeps signing, and nothing it issued needs replacing. The backup lives in `~/ca-backups/lab-ca-2026-10` on `beamlinehost`, and on the USB copy if `beamlinehost`'s own disk was lost.
+
+From `beamlinehost`:
+
+```bash
+B=~/ca-backups/lab-ca-2026-10    # or the same directory on the USB copy
+ssh -i ~/.ssh/beamline_vms falak@10.10.10.11 'mkdir -m 700 ~/lab-ca'
+scp -q -i ~/.ssh/beamline_vms "$B/ca.key" "$B/ca.crt" falak@10.10.10.11:lab-ca/
+ssh -i ~/.ssh/beamline_vms falak@10.10.10.11 'cd ~/lab-ca && chmod 400 ca.key && chmod 644 ca.crt && openssl x509 -in ca.crt -noout -subject -fingerprint -sha256 && [ "$(openssl pkey -in ca.key -pubout | sha256sum)" = "$(openssl x509 -in ca.crt -noout -pubkey | sha256sum)" ] && echo "key matches cert"'
+```
+
+Expect the subject `Beamline Lab Root CA 2026-10`, the fingerprint `01:6D:EC:B8:…:27:6B:4E:DE`, and `key matches cert`. `mkdir` deliberately fails if `~/lab-ca` already exists, so this can't overwrite a CA by accident. Copy each file as its own `scp` argument: modern OpenSSH `scp` uses SFTP, which treats several paths inside one quoted remote string as a single filename. **Tested 2026-10-05** by restoring into a temporary directory on the live `admin.beamline`: modes, fingerprint and key/certificate match all correct, and both files byte-identical to the originals.
+
+If no backup survives, create a new CA instead (Part 2, Chapter 9) and replace `roles/common/files/beamline-ca.crt` in both `beamlinehost-ansible` and `beamline-ansible`; `beamlinehost` and every VM trust the new one after their next `common` run.
+
 ### Full-stack validation — confirm Terraform and Ansible both agree with reality
 
 Everything up to this point has verified each tool separately. This step proves they *agree* with each other and with what's actually running — the real test for "is this genuinely rebuilt, or does something already disagree with itself":
@@ -1073,6 +1153,7 @@ If both come back clean, there's no remaining configuration drift anywhere in th
 - [ ] The fleet private key is present on `admin.beamline` at `~/.ssh/id_ed25519`, and all twelve passwordless SSH-by-IP checks from `admin.beamline` succeeded
 - [ ] `./tf.sh plan` reports `No changes`
 - [ ] `ansible-playbook site.yml --check --diff` (from `~/beamlinehost-ansible`) shows `changed=0`
+- [ ] The lab CA is restored on `admin.beamline` (subject, fingerprint, `key matches cert`), or a new one has been created
 
 If any host failed the SSH check, resolve that one host (via `virsh console`) before moving on — Section 4 assumes the whole fleet is genuinely reachable.
 
@@ -1158,7 +1239,7 @@ If `git status` lists changes, the repo has moved on since this runbook was last
 
 This runbook stops at "the fleet exists and the host projects are reconnected", the same boundary between building machines and configuring what runs on them that this whole project treats as a hard line. Not covered here, deliberately:
 
-- Configuring software **inside** the VMs (Kubernetes, Tango, SLURM, etc.). That's the fleet-side Ansible project, GitHub repo `beamline-ansible`, run from `admin.beamline`, with its own recovery path. Give `admin.beamline` its own GitHub key rather than copying `github_personal`, so each machine's access can be revoked on its own.
+- Configuring software **inside** the VMs (GitLab, Kubernetes, Tango, SLURM, etc.). That's the fleet-side Ansible project, GitHub repo `beamline-ansible`, run from `admin.beamline`, with its own recovery path. Give `admin.beamline` its own GitHub key rather than copying `github_personal`, so each machine's access can be revoked on its own.
 - GPU passthrough for `hpc-gpu`. It is not declared in this runbook or in `beamline-terraform`, so restoring it is separate work.
 
 **End of disaster-recovery runbook.**
