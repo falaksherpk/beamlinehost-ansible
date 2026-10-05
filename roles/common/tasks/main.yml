@@ -65,3 +65,11 @@
     regexp: '^#force_color_prompt=yes'
     line: force_color_prompt=yes
   become: false
+
+- name: Install the lab's self-signed CA certificate into the system trust store
+  ansible.builtin.copy:
+    src: beamline-ca.crt
+    dest: /usr/local/share/ca-certificates/beamline-ca.crt
+    mode: '0644'
+  notify: Update CA certificates
+  tags: [ca_trust]
